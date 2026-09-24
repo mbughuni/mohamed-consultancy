@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   locales,
   localeNames,
+  localeFlags,
   localeHref,
   stripLocale,
   type Locale,
@@ -24,10 +25,12 @@ export default function LanguageSwitcher({
 
   const isDark = variant === "dark";
   const dividerClass = isDark ? "text-white/25" : "text-navy-100";
-  const activeClass = isDark ? "text-white" : "text-navy-900";
+  const activeClass = isDark
+    ? "bg-white/10 text-white"
+    : "bg-navy-50 text-navy-900";
   const inactiveClass = isDark
-    ? "text-white/50 hover:text-white"
-    : "text-muted hover:text-navy-900";
+    ? "text-white/50 hover:bg-white/5 hover:text-white"
+    : "text-muted hover:bg-navy-50/60 hover:text-navy-900";
 
   return (
     <div
@@ -40,10 +43,14 @@ export default function LanguageSwitcher({
           <Link
             href={localeHref(loc as Locale, barePath)}
             aria-current={loc === locale ? "true" : undefined}
-            className={`rounded px-1 uppercase tracking-wide transition-colors ${
+            aria-label={localeNames[loc as Locale]}
+            className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 uppercase tracking-wide transition-colors ${
               loc === locale ? activeClass : inactiveClass
             }`}
           >
+            <span aria-hidden="true" className="text-base leading-none">
+              {localeFlags[loc as Locale]}
+            </span>
             {loc}
           </Link>
         </span>

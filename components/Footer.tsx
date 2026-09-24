@@ -101,7 +101,7 @@ export default function Footer({
             </li>
           </ul>
           <div className="mt-5 flex gap-3">
-            <span
+            {/* <span
               className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-white/40"
               aria-label="Facebook (link not yet provided)"
               title="Social media link not yet provided"
@@ -114,7 +114,7 @@ export default function Footer({
               title="Social media link not yet provided"
             >
               <Instagram size={16} />
-            </span>
+            </span> */}
           </div>
         </div>
       </div>
