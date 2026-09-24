@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -10,15 +11,14 @@ import type { Dictionary } from "@/lib/i18n/dictionary";
 import Button from "./Button";
 import LanguageSwitcher from "./LanguageSwitcher";
 
-// Entrance stagger timing (ms). Kept subtle and fast — see the explanation
-// notes for why these specific numbers were chosen.
+// Entrance stagger timing (ms) for the navbar's own load-in animation.
 const ENTER_BASE_DELAY = 60;
 const ENTER_STAGGER = 50;
 
-// How long the mobile menu panel takes to animate closed, in ms. Used to
-// delay unmounting so the exit transition can actually be seen, and to
-// keep the panel (and its links) out of the tab order once hidden.
-const MOBILE_MENU_EXIT_MS = 240;
+// How long the mobile drawer takes to slide closed, in ms. Used to delay
+// unmounting so the exit transition can actually be seen, and to keep the
+// drawer (and its links) out of the tab order once hidden.
+const DRAWER_EXIT_MS = 280;
 
 export default function Navbar({
   locale,
@@ -30,15 +30,29 @@ export default function Navbar({
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
-  // `open` is the user's intent (hamburger toggled). `panelMounted` /
-  // `panelShown` separately drive the actual DOM presence and the visual
-  // enter/exit state, so the mobile menu can animate out instead of
-  // disappearing instantly, while still being removed from the DOM (and
-  // the tab order) once fully closed.
-  const [panelMounted, setPanelMounted] = useState(false);
-  const [panelShown, setPanelShown] = useState(false);
+  // `open` is the user's intent (hamburger toggled). `drawerMounted` /
+  // `drawerShown` separately drive DOM presence and the visual open/closed
+  // state, so the drawer can slide out instead of disappearing instantly,
+  // while still being removed from the DOM (and the tab order) once fully
+  // closed.
+  const [drawerMounted, setDrawerMounted] = useState(false);
+  const [drawerShown, setDrawerShown] = useState(false);
+
+  // Drawer content is rendered through a portal so it always overlays the
+  // full page relative to the viewport, regardless of any transform on the
+  // sticky header (the header's own entrance animation sets a transform,
+  // which would otherwise turn it into a containing block for a
+  // fixed-position child). Portals only work client-side, hence this flag.
+  const [isBrowser, setIsBrowser] = useState(false);
 
   const pathname = usePathname();
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    setIsBrowser(true);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -51,27 +65,58 @@ export default function Navbar({
     setOpen(false);
   }, [pathname]);
 
+  // Mount/unmount + open/closed visual state for the drawer.
   useEffect(() => {
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (open) {
-      setPanelMounted(true);
-      // Mount in the closed state first, then flip to "shown" on the next
-      // frame so the browser actually paints a starting point to
-      // transition from (otherwise it can jump straight to the open
-      // state with no visible animation).
-      const raf = requestAnimationFrame(() => setPanelShown(true));
+      setDrawerMounted(true);
+      // Mount in the closed position first, then flip to "shown" on the
+      // next frame so there's an actual starting point to slide in from.
+      const raf = requestAnimationFrame(() => setDrawerShown(true));
       return () => cancelAnimationFrame(raf);
     }
 
-    setPanelShown(false);
+    setDrawerShown(false);
     const timeout = setTimeout(
-      () => setPanelMounted(false),
-      reduceMotion ? 0 : MOBILE_MENU_EXIT_MS
+      () => setDrawerMounted(false),
+      reduceMotion ? 0 : DRAWER_EXIT_MS
     );
     return () => clearTimeout(timeout);
+  }, [open]);
+
+  // Lock page scroll while the drawer is open.
+  useEffect(() => {
+    if (!open) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [open]);
+
+  // Close on Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  // Move focus into the drawer when it opens, and back to the hamburger
+  // button when it closes (but not on initial mount, when it was never
+  // open in the first place).
+  useEffect(() => {
+    if (open) {
+      closeButtonRef.current?.focus();
+    } else if (wasOpenRef.current) {
+      toggleButtonRef.current?.focus();
+    }
+    wasOpenRef.current = open;
   }, [open]);
 
   const homeHref = localeHref(locale, "/");
@@ -165,7 +210,12 @@ export default function Navbar({
           </span>
         </div>
 
-        <div className="flex items-center gap-3 lg:hidden">
+        <div
+          className={`flex items-center gap-3 transition-opacity duration-200 ease-premium motion-reduce:transition-none lg:hidden ${
+            open ? "pointer-events-none opacity-0" : "opacity-100"
+          }`}
+          aria-hidden={open}
+        >
           <span
             className="animate-nav-item-enter motion-reduce:animate-none"
             style={{ animationDelay: `${ENTER_BASE_DELAY}ms` }}
@@ -176,7 +226,9 @@ export default function Navbar({
             />
           </span>
           <button
+            ref={toggleButtonRef}
             type="button"
+            tabIndex={open ? -1 : 0}
             className="animate-nav-item-enter inline-flex items-center justify-center rounded-md p-2 text-navy-900 motion-reduce:animate-none"
             style={{ animationDelay: `${ENTER_BASE_DELAY + ENTER_STAGGER}ms` }}
             aria-expanded={open}
@@ -189,57 +241,111 @@ export default function Navbar({
         </div>
       </div>
 
-      {panelMounted ? (
-        <div
-          id="mobile-menu"
-          className={`overflow-hidden border-t border-navy-100 bg-white transition-all duration-[240ms] ease-premium motion-reduce:transition-none lg:hidden ${
-            panelShown
-              ? "translate-y-0 opacity-100"
-              : "-translate-y-2 opacity-0"
-          }`}
-        >
-          <nav
-            className="container-brand flex flex-col gap-1 py-4"
-            aria-label="Mobile"
-          >
-            {dict.nav.links.map((link, index) => (
-              <Link
-                key={link.path}
-                href={localeHref(locale, link.path)}
-                className={`rounded-md px-3 py-3 text-base font-medium text-navy-900 transition-all duration-300 ease-premium motion-reduce:transition-none hover:bg-navy-50 ${
-                  panelShown
-                    ? "translate-y-0 opacity-100"
-                    : "-translate-y-1 opacity-0"
+      {isBrowser && drawerMounted
+        ? createPortal(
+            <div className="lg:hidden">
+              {/* Backdrop — dims and blurs the page behind the drawer.
+                  z-[60] sits above the header's own z-50 so nothing in
+                  the header (e.g. its now-hidden hamburger button) can
+                  ever show through on top of the overlay. */}
+              <div
+                aria-hidden="true"
+                onClick={() => setOpen(false)}
+                className={`fixed inset-0 z-[60] bg-navy-950/50 backdrop-blur-[2px] transition-opacity duration-[280ms] ease-premium motion-reduce:transition-none ${
+                  drawerShown ? "opacity-100" : "opacity-0"
                 }`}
-                style={{
-                  transitionDelay: panelShown ? `${index * 40}ms` : "0ms",
-                }}
+              />
+
+              {/* Drawer — slides in from the left, overlaying the page */}
+              <div
+                id="mobile-menu"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Mobile navigation"
+                className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[82%] max-w-xs flex-col bg-white shadow-2xl transition-transform duration-[280ms] ease-premium motion-reduce:transition-none ${
+                  drawerShown ? "translate-x-0" : "-translate-x-full"
+                }`}
               >
-                {link.label}
-              </Link>
-            ))}
-            <div
-              className={`mt-2 px-3 transition-all duration-300 ease-premium motion-reduce:transition-none ${
-                panelShown
-                  ? "translate-y-0 opacity-100"
-                  : "-translate-y-1 opacity-0"
-              }`}
-              style={{
-                transitionDelay: panelShown
-                  ? `${dict.nav.links.length * 40}ms`
-                  : "0ms",
-              }}
-            >
-              <Button
-                href={localeHref(locale, "/application-process")}
-                className="w-full"
-              >
-                {dict.nav.cta}
-              </Button>
-            </div>
-          </nav>
-        </div>
-      ) : null}
+                <div className="flex h-16 items-center justify-between border-b border-navy-100 pl-5 pr-3">
+                  <Link
+                    href={homeHref}
+                    className="flex items-center gap-3"
+                    onClick={() => setOpen(false)}
+                  >
+                    <span className="relative block h-9 w-9 overflow-hidden rounded-lg">
+                      <Image
+                        src="/images/logo.png"
+                        alt="Mohamed International Education Consultancy logo"
+                        fill
+                        sizes="36px"
+                        className="object-cover"
+                      />
+                    </span>
+                    <span className="font-heading text-base font-semibold text-navy-900">
+                      Mohamed
+                    </span>
+                  </Link>
+                  <button
+                    ref={closeButtonRef}
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-md p-2 text-navy-900"
+                    aria-label="Close menu"
+                    onClick={() => setOpen(false)}
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <nav
+                  className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4"
+                  aria-label="Mobile"
+                >
+                  {dict.nav.links.map((link, index) => (
+                    <Link
+                      key={link.path}
+                      href={localeHref(locale, link.path)}
+                      className={`rounded-md px-3 py-3 text-base font-medium text-navy-900 transition-all duration-300 ease-premium motion-reduce:transition-none hover:bg-navy-50 ${
+                        drawerShown
+                          ? "translate-x-0 opacity-100"
+                          : "-translate-x-2 opacity-0"
+                      }`}
+                      style={{
+                        transitionDelay: drawerShown ? `${index * 40}ms` : "0ms",
+                      }}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </nav>
+
+                <div
+                  className={`space-y-4 border-t border-navy-100 px-5 py-5 transition-all duration-300 ease-premium motion-reduce:transition-none ${
+                    drawerShown
+                      ? "translate-x-0 opacity-100"
+                      : "-translate-x-2 opacity-0"
+                  }`}
+                  style={{
+                    transitionDelay: drawerShown
+                      ? `${dict.nav.links.length * 40}ms`
+                      : "0ms",
+                  }}
+                >
+                  <LanguageSwitcher
+                    locale={locale}
+                    label={dict.common.languageSwitchLabel}
+                  />
+                  <Button
+                    href={localeHref(locale, "/application-process")}
+                    className="w-full"
+                  >
+                    {dict.nav.cta}
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </header>
   );
 }
