@@ -285,9 +285,9 @@ const en: Dictionary = {
       hours: "Business Hours",
     },
     placeholders: {
-      email: "PLACEHOLDER — email address not yet provided",
-      address: "PLACEHOLDER — office address not yet provided",
-      hours: "PLACEHOLDER — business hours not yet provided",
+      email: "mkibwana456@gmail.com",
+      address: "#",
+      hours: "#",
     },
     form: {
       fullName: "Full Name",

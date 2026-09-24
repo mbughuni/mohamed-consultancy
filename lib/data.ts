@@ -97,7 +97,7 @@ export const universities = [
     slug: "parul-university",
     name: "Parul University",
     location: "Gujarat, India",
-    logo: "/images/universities/parul-university.png",
+    logo: "/images/universities/parul-university.jpg",
   },
 ];
 
