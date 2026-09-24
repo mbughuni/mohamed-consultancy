@@ -285,9 +285,9 @@ const sw: Dictionary = {
       hours: "Saa za Kazi",
     },
     placeholders: {
-      email: "NAFASI WAZI — barua pepe bado haijawekwa",
-      address: "NAFASI WAZI — anwani ya ofisi bado haijawekwa",
-      hours: "NAFASI WAZI — saa za kazi bado hazijawekwa",
+    email: "mkibwana456@gmail.com",
+      address: "#",
+      hours: "#",
     },
     form: {
       fullName: "Jina Kamili",
